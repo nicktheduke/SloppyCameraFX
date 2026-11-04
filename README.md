@@ -3,7 +3,7 @@
 Combat and weather lens effects for Skyrim Special Edition / Anniversary Edition. One SKSE plugin
 (`SloppyCameraFX.dll`) with two switchable modules on a shared core. By nicktheduke.
 
-Needs Community Shaders or Bottled Shaders. Not for ENB or VR. Tested on AE 1.6.1170.
+Works on its own, or with Community Shaders, Bottled Shaders or ENB (tested on vanilla, Bottled Shaders and ENBSeries 0.505). Not for VR. Tested on AE 1.6.1170.
 
 Download and full feature list: Nexus Mods (SLOPPY CAMERA FX).
 

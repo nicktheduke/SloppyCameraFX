@@ -155,14 +155,14 @@ namespace
 	double lastUpdate = 0.0;
 	bool firstDrawLogged = false;
 
-	void AfterTonemap(uint32_t a_output);
+	void AfterTonemap(uint32_t a_output, int a_site);
 
 	struct TonemapPass
 	{
 		static void thunk(RE::ImageSpaceManager* a1, RE::ImageSpaceEffect* a2, uint32_t a_input, uint32_t a_output, RE::ImageSpaceShaderParam* a5)
 		{
 			func(a1, a2, a_input, a_output, a5);
-			AfterTonemap(a_output);
+			AfterTonemap(a_output, 1);
 		}
 		static inline REL::Relocation<decltype(thunk)> func;
 	};
@@ -173,14 +173,13 @@ namespace
 		static void thunk(RE::ImageSpaceManager* a1, RE::ImageSpaceEffect* a2, uint32_t a_input, uint32_t a_output, RE::ImageSpaceShaderParam* a5)
 		{
 			func(a1, a2, a_input, a_output, a5);
-			AfterTonemap(a_output);
+			AfterTonemap(a_output, 2);
 		}
 		static inline REL::Relocation<decltype(thunk)> func;
 	};
 
-	uint64_t lastRenderedFrame = UINT64_MAX;
 
-	void AfterTonemap(uint32_t a_output)
+	void AfterTonemap(uint32_t a_output, int a_site)
 	{
 		auto* renderer = RE::BSGraphics::Renderer::GetSingleton();
 		if (!renderer)
@@ -205,11 +204,15 @@ namespace
 			for (auto& [order, module] : Modules())
 				module->Update();
 		}
-		// Draw once per frame even when SE runs the pass from both call sites.
-		const uint64_t frame = globals::gameState.frameCountAtomic.load(std::memory_order_relaxed);
-		if (frame == lastRenderedFrame)
+		// Draw once per frame even when SE runs the pass from both call sites: the second site is skipped only when it
+		// comes straight after the first (same frame). Every other call draws. (This used to be keyed on the 2 ms
+		// Update throttle, which skipped every other frame when the game ran uncapped above ~500 fps, so the lens
+		// effects flickered or looked missing without Community Shaders / Bottled Shaders / ENB.)
+		static int lastSite = 0;
+		const bool sameFrameSecondSite = a_site == 2 && lastSite == 1;
+		lastSite = a_site;
+		if (sameFrameSecondSite)
 			return;
-		lastRenderedFrame = frame;
 		for (auto& [order, module] : Modules())
 			if (module->IsEnabled())
 				module->Render(a_output);
