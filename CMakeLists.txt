@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(SloppyCameraFX VERSION 1.0.0 LANGUAGES C CXX)
+project(SloppyCameraFX VERSION 1.0.1 LANGUAGES C CXX)
 
 # SLOPPY CAMERA FX by nicktheduke. One SKSE plugin with switchable modules (combat\, weather\) on a shared core\.
 #

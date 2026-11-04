@@ -19,7 +19,7 @@ namespace
 {
 	constexpr auto kSettingsPath = L"Data\\SKSE\\Plugins\\SloppyCameraFX\\Settings.json";
 	constexpr auto kLegacySettingsPath = L"Data\\SKSE\\Plugins\\CommunityShaders\\SettingsUser.json";
-	constexpr auto kVersionText = "1.0.0";
+	constexpr auto kVersionText = "1.0.1";
 
 	std::multimap<int, SloppyCameraFX::Module*>& Modules()
 	{
@@ -383,7 +383,7 @@ namespace SloppyCameraFX
 }
 
 SKSEPluginInfo(
-	.Version = REL::Version{ 1, 0, 0, 0 },
+	.Version = REL::Version{ 1, 0, 1, 0 },
 	.Name = "SloppyCameraFX"sv,
 	.Author = "nicktheduke"sv,
 	.StructCompatibility = SKSE::StructCompatibility::Independent,
