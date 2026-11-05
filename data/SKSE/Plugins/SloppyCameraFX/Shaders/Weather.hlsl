@@ -701,6 +701,13 @@ float4 mainPS(float4 position : SV_Position) : SV_Target0
 		const float arrival = arrivalBase * covScale;
 		const float a = pow(amount, 1.7);  // the front creeps: slow along the frame, faster as it deepens
 		const float vis = GlazeVis(arrival, a);
+		// nicktheduke 2026-11-05: how much of the frost pass replaces the image at this pixel. The ice used to replace it
+		// outright wherever the frost pass ran, which cut a hard line through the sun glare, lens dirt, rain and haze
+		// layers at the front of new frost (and erased them everywhere once frost passed 20%). Now the ice fades in
+		// over a wide, irregular band at its front and leaves the layers under it alone where there is no ice yet.
+		const float frontJitter = (Fbm(float2(uv.x * aspect, uv.y) * 6.0, 1361u) - 0.5) * 0.08;
+		float cover = saturate((a - arrival + frontJitter) / 0.16 + 1.0);
+		cover = cover * cover * (3.0 - 2.0 * cover);
 		const float age = saturate((a - arrival) / 0.55);
 		const float cold = saturate((amount - 0.35) / 0.65);
 		const float iceNoise = 0.9 + 0.2 * ValueNoise(p / 90.0, 1201u);
@@ -717,7 +724,7 @@ float4 mainPS(float4 position : SV_Position) : SV_Target0
 		const float relW = 0.65 * 0.95 * rv * (0.6 + 0.4 * fcold);
 		const float rel = tex.r * relW;
 
-		[branch] if (vis > 0.001 || rel > 0.001 || amount > 0.2)
+		[branch] if (cover > 0.001 || vis > 0.001 || rel > 0.001 || amount > 0.2)
 		{
 			// ---- refraction: the ice is a thick, uneven lens ----
 			float2 off = 0.0;  // reference pixels
@@ -772,7 +779,9 @@ float4 mainPS(float4 position : SV_Position) : SV_Target0
 			const float phase = 6.2831853 * FrostBreath.x * time;
 			const float breathe = 1.0 + 0.12 * FrostBreath.y * (sin(phase) + 0.35 * sin(phase * 1.618 + 1.3)) / 1.35;
 			const float rimWidth = (0.034 + 0.075 * cold) * (0.55 + 0.9 * rimn) * saturate((amount - 0.2) / 0.12) * breathe;
-			float rim = pow(saturate(1.0 - dEdge / max(rimWidth, 1e-4)), 1.5);
+			// nicktheduke 2026-11-05: fade the rim in with the frost. Before 20% the width was 0, and 1 - 0/0 made the corners
+			// beyond the frost shape jump to full white rim: a hard line at the very start of frost.
+			float rim = pow(saturate(1.0 - dEdge / max(rimWidth, 1e-4)), 1.5) * smoothstep(0.2, 0.32, amount);
 			rim *= 0.7 + 0.5 * smoothstep(0.55, 0.85, ValueNoise(p / 1.6, 1289u));
 			rim = saturate(rim);
 
@@ -820,6 +829,7 @@ float4 mainPS(float4 position : SV_Position) : SV_Target0
 				const float rx2 = (FrostMask.SampleLevel(SceneSampler, uv + ex, 0).r - FrostMask.SampleLevel(SceneSampler, uv - ex, 0).r) * 0.5 * relW * 3.6;
 				const float ry2 = (FrostMask.SampleLevel(SceneSampler, uv + ey, 0).r - FrostMask.SampleLevel(SceneSampler, uv - ey, 0).r) * 0.5 * relW * 3.6;
 				const float opac = 1.0 - exp(-rel * 1.5);
+				cover = max(cover, opac);
 				const float3 Lv = normalize(float3(-0.55, -0.62, 0.56));
 				float3 n = float3(-rx2 * 5.0, -ry2 * 5.0, 1.0);
 				n = normalize(n);
@@ -852,6 +862,7 @@ float4 mainPS(float4 position : SV_Position) : SV_Target0
 			// ---- white frosted edge ----
 			{
 				const float ro = rim * (0.62 + 0.3 * cold);
+				cover = max(cover, ro);
 				o = o * (1.0 - ro) + lamb * 1.3 * tintIce * ro;
 			}
 
@@ -877,6 +888,7 @@ float4 mainPS(float4 position : SV_Position) : SV_Target0
 					const float shade = lerp(1.0, clamp(1.0 + (-sgx * 0.6 - sgy * 0.8) * 25.0 * FrostBreath.z, 0.75, 1.25), crustZone);
 					const float3 snowLit = lamb * float3(1.0, 1.0, 1.02) * 1.35 * shade * lerp(1.0, float3(0.97, 0.99, 1.03), crustZone);
 					o = lerp(o, snowLit, saturate(snowAlpha));
+					cover = max(cover, saturate(snowAlpha));
 				}
 				// glints: snow grains and crust facets catching the light, a few with a colour fringe
 				[branch] if (sv > 0.5)
@@ -904,7 +916,7 @@ float4 mainPS(float4 position : SV_Position) : SV_Target0
 			}
 
 			const float3 frosted = pow(max(o, 0.0), 1.0 / 2.2);
-			color = lerp(color, frosted, opacity);
+			color = lerp(color, frosted, opacity * cover);
 		}
 	}
 
