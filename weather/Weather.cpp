@@ -9,6 +9,7 @@
 
 #include "LensShared.h"
 #include "WeatherCompat.h"
+#include "SelfTest.h"
 
 #include <DDSTextureLoader.h>
 // DirectXTK (DDS loading) is linked by CMakeLists.txt.
@@ -1600,6 +1601,41 @@ void ScreenWeather::RestoreDefaultSettings()
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
+// nicktheduke: recorded self test (SelfTest.cpp drives it). Same values as the Force sliders.
+
+void ScreenWeather::SelfTestTick(std::string_view a_name, float a_t, float, bool a_end)
+{
+	const float on = a_end ? 0.0f : 1.0f;
+	if (a_name == "frost") {
+		// grows over ~10 s so the shape change from light to heavy frost is visible, then holds
+		const float x = std::clamp(a_t / 10.0f, 0.0f, 1.0f);
+		previewFrost = a_end ? 0.0f : x * x * (3.0f - 2.0f * x);
+	} else if (a_name == "rain")
+		previewRain = on;
+	else if (a_name == "water_sheet") {
+		if (!a_end && a_t < 0.05f)
+			sheet = 1.0f;
+	} else if (a_name == "sun")
+		previewSun = on;
+	else if (a_name == "moon")
+		previewMoon = on;
+	else if (a_name == "heat_haze")
+		previewHeat = on;
+	else if (a_name == "ash")
+		previewAsh = on;
+	else if (a_name == "dust")
+		previewDust = on;
+	else if (a_name == "fog")
+		previewFog = on;
+	else if (a_name == "embers")
+		previewEmbers = on;
+	else if (a_name == "cold_breath")
+		previewBreath = on;
+	else if (a_name == "entry_fog")
+		previewEntryFog = on;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
 // SLOPPY CAMERA FX module
 
 ScreenWeather globals::features::screenWeather;
@@ -1613,11 +1649,23 @@ namespace
 		const char* LegacyName() const override { return "Screen Weather"; }
 		bool IsEnabled() const override { return globals::features::screenWeather.settings.Enabled; }
 
-		void OnDataLoaded() override { globals::features::screenWeather.DataLoaded(); }
-		void OnGameLoaded() override { globals::features::screenWeather.GameLoaded(); }
+		void OnDataLoaded() override
+		{
+			globals::features::screenWeather.DataLoaded();
+			SloppyCameraFX::SelfTest::Install();
+		}
+		void OnGameLoaded() override
+		{
+			globals::features::screenWeather.GameLoaded();
+			SloppyCameraFX::SelfTest::OnGameLoaded();
+		}
 		void SetupResources() override { globals::features::screenWeather.SetupResources(); }
 		// Every frame, on or off: when off it clears its share of the lens and gives Cold Breath NG its puff back.
-		void Update() override { globals::features::screenWeather.Reset(); }
+		void Update() override
+		{
+			SloppyCameraFX::SelfTest::Tick();
+			globals::features::screenWeather.Reset();
+		}
 		void Render(uint32_t a_output) override { globals::features::screenWeather.RenderPostProcess(static_cast<RE::RENDER_TARGET>(a_output)); }
 		void DrawMenu() override
 		{

@@ -19,7 +19,7 @@ namespace
 {
 	constexpr auto kSettingsPath = L"Data\\SKSE\\Plugins\\SloppyCameraFX\\Settings.json";
 	constexpr auto kLegacySettingsPath = L"Data\\SKSE\\Plugins\\CommunityShaders\\SettingsUser.json";
-	constexpr auto kVersionText = "1.0.1";
+	constexpr auto kVersionText = "1.0.3";
 
 	std::multimap<int, SloppyCameraFX::Module*>& Modules()
 	{
@@ -211,6 +211,17 @@ namespace
 		static int lastSite = 0;
 		const bool sameFrameSecondSite = a_site == 2 && lastSite == 1;
 		lastSite = a_site;
+		// Support log: the first few tone map calls in game (call site, output target, gap since the last call), so a
+		// report of effects flickering or vanishing on a setup we haven't tested (SE 1.5.97, other frame setups) shows
+		// which call the game actually presents.
+		static int callsLogged = 0;
+		static double lastCall = 0.0;
+		if (a_output != 0 && callsLogged < 24 && !globals::state->IsMainOrLoadingMenuOpen()) {
+			++callsLogged;
+			logger::info("[core] tone map call: site {} output {} {:.2f} ms since last{}", a_site, a_output, (now - lastCall) * 1000.0,
+				sameFrameSecondSite ? " (same frame, skipped)" : "");
+		}
+		lastCall = now;
 		if (sameFrameSecondSite)
 			return;
 		for (auto& [order, module] : Modules())
@@ -383,7 +394,7 @@ namespace SloppyCameraFX
 }
 
 SKSEPluginInfo(
-	.Version = REL::Version{ 1, 0, 1, 0 },
+	.Version = REL::Version{ 1, 0, 3, 0 },
 	.Name = "SloppyCameraFX"sv,
 	.Author = "nicktheduke"sv,
 	.StructCompatibility = SKSE::StructCompatibility::Independent,

@@ -1990,7 +1990,7 @@ void ScreenAction::RenderPostProcess(RE::RENDER_TARGET a_output)
 		const double wallClock = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
 		const float breathAgeShown = previewStaminaBreath ? static_cast<float>(std::fmod(wallClock, 2.2)) : std::min(exhaleAge, 30.0f);
 		const float breathStrengthShown = previewStaminaBreath ? 1.0f : shared.exhaleStrength;
-		const float shimmerShown = previewStaminaBreath ? 1.0f : Clamp01(staminaShimmer);
+		const float shimmerShown = previewStaminaBreath ? Clamp01(std::clamp(settings.StaminaBreathStrength, 0.0f, 2.0f)) : Clamp01(staminaShimmer);  // preview follows the strength slider
 		// .w: whole part = shock hit counter (bolt layout), fraction = lasting shock strength (edge crackle)
 		data.Breath = { breathAgeShown, breathStrengthShown, shimmerShown, std::fmod(shockSeed, 4096.0f) + std::min(Clamp01(persistShown), 0.99f) };
 	}
@@ -2290,6 +2290,114 @@ void ScreenAction::LoadSettings(json& o_json)
 void ScreenAction::RestoreDefaultSettings()
 {
 	settings = {};
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// nicktheduke: recorded self test (weather\SelfTest.cpp drives it). Same triggers as the Preview buttons.
+
+void ScreenAction::SelfTestTick(std::string_view a_name, float a_t, float a_prev, bool a_end)
+{
+	auto at = [&](float a_mark) { return !a_end && a_prev < a_mark && a_t >= a_mark; };
+	auto spawn = [this](SplatType a_type, uint32_t a_variant) {
+		Pending item;
+		item.type = a_type;
+		item.variant = a_variant;
+		item.count = a_type == SplatType::kBlood ? 2 : 1;
+		Queue(item);
+	};
+	const std::pair<std::string_view, uint32_t> fluids[] = { { "ichor", 2 }, { "oil", 3 }, { "draugr", 4 }, { "ghost", 10 } };
+	const std::pair<std::string_view, SplatType> singles[] = { { "venom", SplatType::kVenom }, { "web", SplatType::kWeb },
+		{ "ice", SplatType::kIce }, { "fire", SplatType::kFire }, { "grit", SplatType::kGrit }, { "ash_puff", SplatType::kAsh },
+		{ "steam", SplatType::kSteam } };
+	if (a_name == "blood") {
+		for (float m : { 0.0f, 1.5f, 3.0f })
+			if (at(m))
+				spawn(SplatType::kBlood, 0);
+		return;
+	}
+	for (const auto& [name, variant] : fluids) {
+		if (a_name == name) {
+			for (float m : { 0.0f, 1.5f })
+				if (at(m))
+					spawn(SplatType::kBlood, variant);
+			return;
+		}
+	}
+	for (const auto& [name, type] : singles) {
+		if (a_name == name) {
+			if (at(0.0f))
+				spawn(type, 0);
+			return;
+		}
+	}
+	if (a_name == "flash_slash") {
+		for (float m : { 0.0f, 2.5f }) {
+			if (at(m)) {
+				flashAge = 0.0f;
+				sinceFlash = 0.0f;
+				flashU = 0.62f;
+				flashV = 0.45f;
+				flashStrength = settings.PhotosensitiveSafe ? 0.6f : 1.0f;
+				slashDirX = 0.8f;
+				slashDirY = -0.6f;
+				slashStrength = settings.PhotosensitiveSafe ? 0.7f : 1.0f;
+			}
+		}
+	} else if (a_name == "shout") {
+		if (at(0.0f)) {
+			Pending item;
+			item.isShout = true;
+			Queue(item);
+		}
+	} else if (a_name == "stomp") {
+		if (at(0.0f)) {
+			Pending item;
+			item.type = SplatType::kGrit;
+			item.variant = 98;
+			Queue(item);
+		}
+	} else if (a_name == "poison") {
+		previewPoison = a_end ? 0.0f : 1.0f;
+	} else if (a_name == "dragonfire") {
+		previewDragonfire = a_end ? 0.0f : 1.0f;
+	} else if (a_name == "rime") {
+		previewRime = a_end ? 0.0f : 1.0f;
+	} else if (a_name == "shock_hit") {
+		for (float m : { 0.0f, 3.0f }) {
+			if (at(m)) {
+				shockPulse = 1.0f;
+				shockAge = 0.0f;
+				shockHits = std::fmod(shockHits + 1.0f, 4096.0f);
+				shock = std::max(shock, Clamp01(std::clamp(settings.ShockStrength, 0.0f, 2.0f) * std::clamp(settings.MasterStrength, 0.0f, 2.0f)));
+			}
+		}
+	} else if (a_name == "shock_lasting") {
+		previewShock = a_end ? 0.0f : 0.8f;
+	} else if (a_name == "stamina_breath") {
+		previewStaminaBreath = !a_end;
+	} else if (a_name == "hit_shake") {
+		// Normal, Power, Bash, Big, Stagger: one every 1.5 s
+		const uint32_t types[] = { 0, 1, 2, 5, 6 };
+		for (uint32_t k = 0; k < 5; ++k) {
+			if (!at(static_cast<float>(k) * 1.5f))
+				continue;
+			const uint32_t i = types[k];
+			Pending kick;
+			kick.isShake = true;
+			kick.variant = i;
+			kick.strength = 1.0f;
+			kick.hasSwing = i >= static_cast<uint32_t>(ShakeType::kStagger);
+			kick.swing = { 1.0f, 0.0f, 0.0f };
+			if (!kick.hasSwing) {
+				if (auto* player = RE::PlayerCharacter::GetSingleton()) {
+					const float yaw = player->data.angle.z;
+					kick.hasWorld = true;
+					kick.world = player->GetPosition() + RE::NiPoint3(-std::cos(yaw) * 300.0f, std::sin(yaw) * 300.0f, 100.0f);
+				}
+			}
+			Queue(kick);
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

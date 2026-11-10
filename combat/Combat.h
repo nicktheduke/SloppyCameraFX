@@ -93,6 +93,9 @@ struct ScreenAction
 	void SaveSettings(json& o_json);
 	void LoadSettings(json& o_json);
 	void RestoreDefaultSettings();
+	/** @brief nicktheduke: recorded self test. Called every frame while step a_name runs (a_prev = a_t of the last call,
+	 * -1 on the first), and once with a_end = true when it stops. */
+	void SelfTestTick(std::string_view a_name, float a_t, float a_prev, bool a_end);
 	void ClearShaderCache();
 
 	bool loaded = true;
