@@ -48,6 +48,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	ShoutRippleEnabled,
 	ShoutStrength,
 	ImpactFlashEnabled,
+	ImpactFlashThirdPerson,
 	FlashStrength,
 	SlashEnabled,
 	SlashStrength,
@@ -1555,6 +1556,11 @@ void ScreenAction::SpawnFromPending(const Pending& a_pending)
 		const float minimumGap = settings.PhotosensitiveSafe ? 0.34f : 0.1f;
 		if (sinceFlash < minimumGap)
 			return;
+		// First person effects: the slash streak traces your own swing as seen from your eyes, so it never draws in
+		// third person. The flash only does there when the player ticked "Show In Third Person" (as a hit spark).
+		const bool firstPerson = frameSample.firstPerson;
+		if (!firstPerson && !settings.ImpactFlashThirdPerson)
+			return;
 		float u = 0.5f, v = 0.5f;
 		if (a_pending.hasWorld && !Project(a_pending.world, u, v))
 			return;
@@ -1567,7 +1573,7 @@ void ScreenAction::SpawnFromPending(const Pending& a_pending)
 		const float peak = settings.PhotosensitiveSafe ? 0.6f : 1.0f;
 		flashStrength = settings.ImpactFlashEnabled ? Clamp01(a_pending.strength * std::clamp(settings.FlashStrength, 0.0f, 2.0f) * master) * peak : 0.0f;
 		slashStrength = 0.0f;
-		if (settings.SlashEnabled && a_pending.hasSwing) {
+		if (settings.SlashEnabled && a_pending.hasSwing && firstPerson) {
 			// Swing direction on screen: project a point a little along the swing velocity.
 			RE::NiPoint3 ahead = a_pending.world + a_pending.swing * (8.0f / std::max(a_pending.swing.Length(), 1.0f));
 			float u2, v2;
@@ -2107,9 +2113,14 @@ void ScreenAction::DrawSettings()
 	if (ImGui::TreeNodeEx(T(TKEY("impact"), "Impact"), ImGui::ImGuiTreeNodeFlags_DefaultOpen)) {
 		ImGui::Text("%s %s", T(TKEY("readout_precision"), "Precision:"), precisionConnected ? T(TKEY("precision_on"), "connected (exact hit point and swing)") : T(TKEY("precision_off"), "not found (flash only)"));
 		toggle(T(TKEY("flash"), "Impact Flash"), settings.ImpactFlashEnabled, settings.FlashStrength, T(TKEY("flash_strength"), "Flash Strength"),
-			T(TKEY("flash_tooltip"), "A small, very short brightening at the exact point your weapon lands, timed with Precision's hitstop."));
+			T(TKEY("flash_tooltip"), "A small, very short brightening at the exact point your weapon lands, timed with Precision's hitstop.\nFirst person only, unless you tick Show In Third Person."));
+		if (settings.ImpactFlashEnabled) {
+			ImGui::Checkbox(T(TKEY("flash_tp"), "Show Impact Flash In Third Person"), &settings.ImpactFlashThirdPerson);
+			if (auto _tt = Util::HoverTooltipWrapper())
+				ImGui::Text("%s", T(TKEY("flash_tp_tooltip"), "Off: the flash only shows in first person.\nOn: it also shows in third person, like a hit spark where your weapon lands."));
+		}
 		toggle(T(TKEY("slash"), "Slash Streak"), settings.SlashEnabled, settings.SlashStrength, T(TKEY("slash_strength"), "Slash Strength"),
-			T(TKEY("slash_tooltip"), "A thin arc along your swing at the hit point, about 80 ms. Needs Precision."));
+			T(TKEY("slash_tooltip"), "A thin arc along your swing at the hit point, about 80 ms. Needs Precision. First person only."));
 		toggle(T(TKEY("shout"), "Shout Ripple"), settings.ShoutRippleEnabled, settings.ShoutStrength, T(TKEY("shout_strength"), "Shout Strength"),
 			T(TKEY("shout_tooltip"), "A ripple through the lens when you shout or are hit by a shout. Off by default: the game's own shout effect already plays."));
 		ImGui::TreePop();

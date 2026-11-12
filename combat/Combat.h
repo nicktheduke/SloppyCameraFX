@@ -54,6 +54,7 @@ struct ScreenAction
 		bool ShoutRippleEnabled = false;  // off by default: the vanilla shout screen effect already plays
 		float ShoutStrength = 1.0f;
 		bool ImpactFlashEnabled = true;
+		bool ImpactFlashThirdPerson = false;  // off: the flash is a first person effect (on: also as a hit spark in third person)
 		float FlashStrength = 1.0f;
 		bool SlashEnabled = true;
 		float SlashStrength = 1.0f;
