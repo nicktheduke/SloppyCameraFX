@@ -7,6 +7,29 @@ Works on its own, or with Community Shaders, Bottled Shaders or ENB (tested on v
 
 Download and full feature list: Nexus Mods (SLOPPY CAMERA FX).
 
+## Triggering effects from another mod
+
+Any mod can ask for a lens effect with a plain SKSE mod event. No dependency, and nothing happens if SLOPPY CAMERA FX
+is not installed.
+
+```papyrus
+SendModEvent("SloppyCameraFX_Trigger", "blood", 1.0)   ; one-shot, strength 0-1 (omit for full strength)
+SendModEvent("SloppyCameraFX_Hold", "frost", 0.8)      ; held at a level 0-1, send 0 to let go
+SendModEvent("SloppyCameraFX_ReleaseAll")              ; lets go of every held effect
+```
+
+- Trigger names: `blood`, `vampire_blood`, `ichor`, `oil`, `draugr_dust`, `bone_dust`, `sap`, `atronach_embers`,
+  `atronach_ice`, `atronach_sparks`, `ghost_mist`, `venom`, `web`, `ice`, `fire`, `shock`, `grit`, `ash_puff`, `steam`,
+  `stomp`, `shout`, `flash`, `splash`, `shake`, `shake_power`, `shake_bash`, `shake_arrow`, `shake_blocked`,
+  `shake_big`, `shake_stagger`.
+- Hold names: `poison`, `dragonfire`, `rime`, `shock_lasting`, `stamina_breath`, `frost`, `rain`, `sun`, `moon`,
+  `heat_haze`, `ash`, `dust`, `fog`, `embers`, `cold_breath`, `entry_fog`.
+- A hold lasts 30 seconds unless it is sent again, and holds are dropped when a save loads.
+- Requests go through the player's own switches, strengths and Photosensitive Safe Mode. The "Other Mods" menu page can
+  turn them all off. Unknown names are written to `SloppyCameraFX.log`.
+- To test without Papyrus: `Data\SKSE\Plugins\SloppyCameraFX\ApiTest.txt`, one
+  `<seconds> <Trigger|Hold|ReleaseAll> [name] [value]` per line, is played after every save load (see `core/Api.cpp`).
+
 ## Layout
 
 - `core/` plugin entry, the tone map hook (chained after Community Shaders' own hook, before the HUD), shader compile
