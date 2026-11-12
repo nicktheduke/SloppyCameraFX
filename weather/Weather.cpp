@@ -1636,6 +1636,48 @@ void ScreenWeather::SelfTestTick(std::string_view a_name, float a_t, float, bool
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
+// Mod event API (core\Api.cpp): other mods trigger lens effects by name. Always through the user's settings.
+
+bool ScreenWeather::ApiTrigger(std::string_view a_name, float a_strength)
+{
+	if (a_name != "splash")
+		return false;
+	if (settings.Enabled && settings.WaterEnabled)
+		sheet = std::max(sheet, Clamp01(a_strength));  // the sheet of water that runs off after swimming
+	return true;
+}
+
+bool ScreenWeather::ApiHold(std::string_view a_name, float a_value)
+{
+	auto level = [&](bool a_enabled) { return settings.Enabled && a_enabled ? Clamp01(a_value) : 0.0f; };
+	if (a_name == "frost")
+		previewFrost = level(settings.FrostEnabled);
+	else if (a_name == "rain")
+		previewRain = level(settings.WaterEnabled);
+	else if (a_name == "sun")
+		previewSun = level(settings.SunLensEnabled);  // strength settings are applied where the preview is read
+	else if (a_name == "moon")
+		previewMoon = level(settings.MoonLensEnabled);
+	else if (a_name == "heat_haze")
+		previewHeat = level(settings.HeatHazeEnabled);
+	else if (a_name == "ash")
+		previewAsh = level(settings.AshEnabled);
+	else if (a_name == "dust")
+		previewDust = level(settings.DustEnabled);
+	else if (a_name == "fog")
+		previewFog = level(settings.FogLensEnabled);
+	else if (a_name == "embers")
+		previewEmbers = level(settings.EmbersEnabled);
+	else if (a_name == "cold_breath")
+		previewBreath = level(settings.Temp.ColdBreathEnabled) * Clamp01(settings.Temp.ColdBreathStrength);
+	else if (a_name == "entry_fog")
+		previewEntryFog = level(settings.Temp.EntryFogEnabled) * Clamp01(settings.Temp.EntryFogStrength);
+	else
+		return false;
+	return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
 // SLOPPY CAMERA FX module
 
 ScreenWeather globals::features::screenWeather;

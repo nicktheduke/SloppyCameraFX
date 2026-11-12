@@ -1921,7 +1921,10 @@ void ScreenAction::Reset()
 	// Blade and Blunt's exhaustion also runs off stamina), building in fully by 15%
 	const float winded = 1.0f - Smooth(0.15f, 0.35f, frameSample.staminaPct);
 	const float vapor = shared.coldBreathVisible.load(std::memory_order_relaxed);
-	const float shimmerTarget = settings.StaminaBreathEnabled && frameSample.firstPerson && !frameSample.underwater ? winded * (1.0f - 0.85f * Clamp01(vapor)) * std::clamp(settings.StaminaBreathStrength, 0.0f, 2.0f) : 0.0f;
+	// Cold air shows breath as vapor, never as a warm shimmer: as soon as the cold breath is showing at all, the stamina
+	// shimmer switches off (it used to only dim by 85% at full vapor, so both showed at the edge of cold and between puffs).
+	const float coldGate = 1.0f - Smooth(0.0f, 0.06f, vapor);
+	const float shimmerTarget = settings.StaminaBreathEnabled && frameSample.firstPerson && !frameSample.underwater ? winded * coldGate * std::clamp(settings.StaminaBreathStrength, 0.0f, 2.0f) : 0.0f;
 	approach(staminaShimmer, shimmerTarget, 1.0f);
 }
 
@@ -2097,7 +2100,7 @@ void ScreenAction::DrawSettings()
 		toggle(T(TKEY("grit"), "Explosion Grit"), settings.GritEnabled, settings.GritStrength, T(TKEY("grit_strength"), "Grit Strength"), nullptr);
 		toggle(T(TKEY("ash"), "Disintegrate Ash"), settings.AshPuffEnabled, settings.AshPuffStrength, T(TKEY("ash_strength"), "Ash Strength"), nullptr);
 		toggle(T(TKEY("stamina_breath"), "Stamina Breaths (First Person)"), settings.StaminaBreathEnabled, settings.StaminaBreathStrength, T(TKEY("stamina_breath_strength"), "Stamina Breath Strength"),
-			T(TKEY("stamina_breath_tooltip"), "When you are winded, each exhale is a faint shimmer of warm air rising from below. No fog, no colour.\nShares the Weather module's breathing rhythm and fades under its cold breath vapor."));
+			T(TKEY("stamina_breath_tooltip"), "When you are winded, each exhale is a faint shimmer of warm air rising from below. No fog, no colour.\nShares the Weather module's breathing rhythm. Switches off in the cold, where your breath shows as vapor instead."));
 		ImGui::TreePop();
 	}
 
@@ -2398,6 +2401,98 @@ void ScreenAction::SelfTestTick(std::string_view a_name, float a_t, float a_prev
 			Queue(kick);
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Mod event API (core\Api.cpp): other mods trigger lens effects by name. Always through the user's settings.
+
+bool ScreenAction::ApiTrigger(std::string_view a_name, float a_strength)
+{
+	const float strength = Clamp01(a_strength);
+	const bool on = settings.Enabled;
+	auto spawn = [&](SplatType a_type, uint32_t a_variant, bool a_allowed) {
+		if (on && a_allowed) {
+			Pending item;
+			item.type = a_type;
+			item.variant = a_variant;
+			item.strength = strength;
+			item.count = a_type == SplatType::kBlood ? 2 : 1;
+			Queue(item);
+		}
+		return true;
+	};
+	const std::pair<std::string_view, uint32_t> fluids[] = { { "blood", 0 }, { "vampire_blood", 1 }, { "ichor", 2 }, { "oil", 3 },
+		{ "draugr_dust", 4 }, { "bone_dust", 5 }, { "sap", 6 }, { "atronach_embers", 7 }, { "atronach_ice", 8 }, { "atronach_sparks", 9 },
+		{ "ghost_mist", 10 } };
+	for (const auto& [name, variant] : fluids)
+		if (a_name == name)
+			return spawn(SplatType::kBlood, variant, settings.BloodEnabled);
+	if (a_name == "venom") return spawn(SplatType::kVenom, 0, settings.VenomEnabled);
+	if (a_name == "web") return spawn(SplatType::kWeb, 0, settings.WebEnabled);
+	if (a_name == "ice") return spawn(SplatType::kIce, 0, settings.FrostHitsEnabled);
+	if (a_name == "fire") return spawn(SplatType::kFire, 0, settings.FireHitsEnabled);
+	if (a_name == "grit") return spawn(SplatType::kGrit, 0, settings.GritEnabled);
+	if (a_name == "ash_puff") return spawn(SplatType::kAsh, 0, settings.AshPuffEnabled);
+	if (a_name == "steam") return spawn(SplatType::kSteam, 0, settings.SteamEnabled);
+	if (a_name == "shock") return spawn(SplatType::kFire, 99, settings.ShockEnabled);
+	if (a_name == "stomp") return spawn(SplatType::kGrit, 98, settings.StompDustEnabled);
+	if (a_name == "shout") {
+		if (on && settings.ShoutRippleEnabled) {
+			Pending item;
+			item.isShout = true;
+			item.strength = strength;
+			Queue(item);
+		}
+		return true;
+	}
+	if (a_name == "flash") {
+		if (on && settings.ImpactFlashEnabled) {
+			Pending item;
+			item.isFlash = true;  // no world position: centre of the screen, still rate limited by photosensitive mode
+			item.strength = strength;
+			Queue(item);
+		}
+		return true;
+	}
+	const std::pair<std::string_view, ShakeType> shakes[] = { { "shake", ShakeType::kNormal }, { "shake_power", ShakeType::kPower },
+		{ "shake_bash", ShakeType::kBash }, { "shake_arrow", ShakeType::kArrow }, { "shake_blocked", ShakeType::kBlocked },
+		{ "shake_big", ShakeType::kBig }, { "shake_stagger", ShakeType::kStagger } };
+	for (const auto& [name, type] : shakes) {
+		if (a_name != name)
+			continue;
+		auto* camera = RE::PlayerCamera::GetSingleton();
+		const bool firstPerson = camera && camera->IsInFirstPerson();
+		if (type == ShakeType::kStagger ? (firstPerson || !ShakeAllowed(false)) : !ShakeAllowed(firstPerson))
+			return true;
+		Pending kick;
+		kick.isShake = true;
+		kick.variant = static_cast<uint32_t>(type);
+		kick.strength = strength;
+		Queue(kick);  // no direction given: a random sideways knock
+		return true;
+	}
+	return false;
+}
+
+bool ScreenAction::ApiHold(std::string_view a_name, float a_value)
+{
+	const float master = std::clamp(settings.MasterStrength, 0.0f, 2.0f);
+	auto level = [&](bool a_enabled, float a_strength) {
+		return settings.Enabled && a_enabled ? Clamp01(Clamp01(a_value) * std::clamp(a_strength, 0.0f, 2.0f) * master) : 0.0f;
+	};
+	if (a_name == "poison")
+		previewPoison = level(settings.PoisonEnabled, settings.PoisonStrength);
+	else if (a_name == "dragonfire")
+		previewDragonfire = level(settings.DragonfireEnabled, settings.DragonfireStrength);
+	else if (a_name == "rime")
+		previewRime = level(settings.RimeEnabled, settings.RimeStrength);
+	else if (a_name == "shock_lasting")
+		previewShock = level(settings.ShockEnabled, settings.ShockStrength);
+	else if (a_name == "stamina_breath")
+		previewStaminaBreath = settings.Enabled && settings.StaminaBreathEnabled && a_value > 0.001f;
+	else
+		return false;
+	return true;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
